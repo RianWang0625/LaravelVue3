@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\SiteController;
+use App\Http\Controllers\ProductController;
 
 Route::get('/', function () {
     return Inertia::render('Home');
@@ -47,3 +48,11 @@ Route::middleware('auth')->group(function () {
 
 });
 
+// 商品管理路由
+Route::middleware(['auth'])->group(function () {
+    Route::get('/products', [ProductController::class, 'index'])
+        ->name('products.index');
+
+    Route::post('/products', [ProductController::class, 'store'])
+        ->name('products.store');
+});
