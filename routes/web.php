@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductVariantController;
+use App\Http\Controllers\ShopController;
 
 Route::get('/', function () {
     return Inertia::render('Home');
@@ -55,4 +57,41 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/products', [ProductController::class, 'store'])
         ->name('products.store');
+
+    Route::put('/products/{product}', [ProductController::class, 'update'])
+        ->name('products.update');
+
+    Route::delete('/products/{product}', [ProductController::class, 'destroy'])
+        ->name('products.destroy');
+
+    
+    // 商品規格管理路由
+    Route::post('/products/{product}/variants', [
+        ProductVariantController::class,
+        'store'
+    ])->name('products.variants.store');
+
+    Route::put('/products/{product}/variants/{variant}', [
+        ProductVariantController::class,
+        'update'
+    ])->name('products.variants.update');
+
+    Route::delete('/products/{product}/variants/{variant}', [
+        ProductVariantController::class,
+        'destroy'
+    ])->name('products.variants.destroy');
+
 });
+
+
+ 
+// 買家購物網站首頁
+Route::get('/shop/{site}', [ShopController::class, 'index'])
+    ->name('shop.index');
+
+// 買家商品詳細頁面
+Route::get('/shop/{site}/products/{product}', [
+    ShopController::class,
+    'show'
+])->name('shop.products.show');
+
