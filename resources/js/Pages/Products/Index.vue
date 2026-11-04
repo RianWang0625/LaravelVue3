@@ -137,6 +137,8 @@ const editForm = useForm({
 });
 
 function startEdit(product: Product) {
+    managingProductId.value = null;
+    resetVariantForm();
     clearPreview(editImagePreview.value);
 
     editingId.value = product.id;
@@ -244,16 +246,22 @@ function resetVariantForm() {
     ];
 }
 
+
 function toggleVariantManager(product: Product) {
+    // 再次點擊時關閉規格管理
     if (managingProductId.value === product.id) {
         managingProductId.value = null;
         resetVariantForm();
         return;
     }
 
+    // 開啟規格管理前先關閉商品編輯
+    cancelEdit();
+
     managingProductId.value = product.id;
     resetVariantForm();
 }
+
 
 function addOptionRow() {
     optionRows.value.push({
