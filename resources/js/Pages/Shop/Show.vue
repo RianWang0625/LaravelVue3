@@ -1,6 +1,7 @@
+
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 
 interface Variant {
     id: number;
@@ -32,17 +33,32 @@ const props = defineProps<{
     product: Product;
 }>();
 
+const page = usePage();
+
+// 商品規格及數量狀態
+const availableVariants = computed(() => {
+    return (props.product.variants ?? []).filter(
+        variant => Boolean(variant.is_active)
+    );
+});
+
+const firstAvailableVariant = availableVariants.value.find(
+    variant => Number(variant.stock) > 0
+);
+
 const selectedVariantId = ref<number | null>(
-    props.product.variants?.[0]?.id ?? null
+    firstAvailableVariant?.id ?? null
 );
 
-const hasVariants = computed(
-    () => (props.product.variants?.length ?? 0) > 0
-);
+const quantity = ref(1);
+const processing = ref(false);
+const errorMessage = ref('');
 
-// 目前選擇的商品規格
+// 商品規格判斷
+const hasVariants = computed(() => availableVariants.value.length > 0);
+
 const selectedVariant = computed(() => {
-    return props.product.variants?.find(
+    return availableVariants.value.find(
         variant => variant.id === selectedVariantId.value
     ) ?? null;
 });
@@ -53,29 +69,135 @@ const currentPrice = computed(() => {
 });
 
 const currentStock = computed(() => {
-    return Number(
-        selectedVariant.value?.stock ?? props.product.stock
-    );
+    if (hasVariants.value) {
+        return Number(selectedVariant.value?.stock ?? 0);
+    }
+
+    return Number(props.product.stock);
 });
 
 const formattedPrice = computed(() => {
     return `NT$ ${Number(currentPrice.value).toLocaleString('zh-TW')}`;
 });
 
+const formattedSubtotal = computed(() => {
+    const subtotal = Number(currentPrice.value) * quantity.value;
+    return `NT$ ${subtotal.toLocaleString('zh-TW')}`;
+});
+
+// 商品圖片網址
 const imageUrl = computed(() => {
-    return props.product.image
-        ? `/storage/${props.product.image}`
-        : null;
+    const image = props.product.image;
+
+    if (!image) return null;
+
+    if (
+        image.startsWith('http://') ||
+        image.startsWith('https://') ||
+        image.startsWith('/')
+    ) {
+        return image;
+    }
+
+    return `/storage/${image}`;
 });
 
 const shopUrl = `/shop/${props.site.id}`;
+const cartUrl = `${shopUrl}/cart`;
 
 // 商品規格文字
 function variantLabel(variant: Variant): string {
-    return Object.entries(variant.options)
+    return Object.entries(variant.options ?? {})
         .map(([name, value]) => `${name}：${value}`)
         .join(' / ');
 }
+
+// 切換規格後重設購買數量
+watch(selectedVariantId, () => {
+    quantity.value = 1;
+    errorMessage.value = '';
+});
+
+// 增加購買數量
+function increaseQuantity() {
+    if (processing.value) return;
+
+    if (quantity.value < currentStock.value) {
+        quantity.value++;
+    }
+}
+
+// 減少購買數量
+function decreaseQuantity() {
+    if (processing.value) return;
+
+    if (quantity.value > 1) {
+        quantity.value--;
+    }
+}
+
+// 加入購物車
+function addToCart() {
+    errorMessage.value = '';
+
+    if (processing.value) return;
+
+    if (currentStock.value <= 0) {
+        errorMessage.value = '這項商品目前沒有庫存。';
+        return;
+    }
+
+    if (hasVariants.value && selectedVariantId.value === null) {
+        errorMessage.value = '請先選擇商品規格。';
+        return;
+    }
+
+    if (
+        !Number.isInteger(quantity.value) ||
+        quantity.value < 1 ||
+        quantity.value > currentStock.value
+    ) {
+        errorMessage.value = '購買數量不正確或超過可購買庫存。';
+        return;
+    }
+
+    processing.value = true;
+
+    router.post(
+        cartUrl,
+        {
+            product_id: props.product.id,
+            variant_id: hasVariants.value
+                ? selectedVariantId.value
+                : null,
+            quantity: quantity.value,
+        },
+        {
+            preserveScroll: true,
+
+            onError: (errors) => {
+                errorMessage.value =
+                    errors.quantity ||
+                    errors.variant_id ||
+                    errors.product_id ||
+                    '加入購物車失敗，請稍後再試。';
+            },
+
+            onFinish: () => {
+                processing.value = false;
+            },
+        }
+    );
+}
+
+// 是否可以加入購物車
+const canAddToCart = computed(() => {
+    return (
+        currentStock.value > 0 &&
+        (!hasVariants.value || selectedVariantId.value !== null) &&
+        !processing.value
+    );
+});
 </script>
 
 <template>
@@ -89,9 +211,15 @@ function variantLabel(variant: Variant): string {
                     {{ site.name }}
                 </Link>
 
-                <Link :href="shopUrl" class="back-link">
-                    返回商品列表
-                </Link>
+                <div class="header-actions">
+                    <Link :href="shopUrl" class="back-link">
+                        返回商品列表
+                    </Link>
+
+                    <Link :href="cartUrl" class="cart-link">
+                        🛒 購物車
+                    </Link>
+                </div>
             </div>
         </header>
 
@@ -116,6 +244,7 @@ function variantLabel(variant: Variant): string {
                 <!-- 商品資訊 -->
                 <div class="product-details">
                     <span class="eyebrow">PRODUCT DETAILS</span>
+
                     <h1>{{ product.name }}</h1>
 
                     <div class="price">
@@ -136,37 +265,34 @@ function variantLabel(variant: Variant): string {
 
                         <div class="variant-list">
                             <button
-                                v-for="variant in product.variants"
+                                v-for="variant in availableVariants"
                                 :key="variant.id"
                                 type="button"
                                 class="variant-button"
                                 :class="{
                                     selected: selectedVariantId === variant.id
                                 }"
-                                :disabled="Number(variant.stock) === 0"
+                                :disabled="Number(variant.stock) <= 0 || processing"
                                 @click="selectedVariantId = variant.id"
                             >
                                 {{ variantLabel(variant) }}
 
-                                <small v-if="Number(variant.stock) === 0">
+                                <small v-if="Number(variant.stock) <= 0">
                                     （售完）
                                 </small>
                             </button>
                         </div>
 
-                        <!-- 所有規格售完提示 -->
                         <p
-                            v-if="product.variants.length > 0 &&
-                                product.variants.every(variant => Number(variant.stock) === 0)"
-                            class="text-danger mt-3"
+                            v-if="availableVariants.every(
+                                variant => Number(variant.stock) <= 0
+                            )"
+                            class="sold-out-message"
                         >
                             目前所有規格皆已售完
                         </p>
 
-                        <p
-                            v-if="selectedVariant?.sku"
-                            class="sku"
-                        >
+                        <p v-if="selectedVariant?.sku" class="sku">
                             商品編號：{{ selectedVariant.sku }}
                         </p>
                     </div>
@@ -176,21 +302,109 @@ function variantLabel(variant: Variant): string {
                         <p>此商品沒有其他規格選項。</p>
                     </div>
 
-                    <div class="purchase-status">
+                    <!-- 商品庫存狀態 -->
+                    <div
+                        class="purchase-status"
+                        :class="{ unavailable: currentStock <= 0 }"
+                    >
                         <span v-if="currentStock > 0">
                             商品可供選購
                         </span>
-                        <span v-else class="out-of-stock">
+
+                        <span v-else>
                             目前無庫存
                         </span>
                     </div>
 
-                    <p class="notice">
-                        購物車與結帳功能開發中，目前可瀏覽商品與選擇規格。
+                    <!-- 商品數量選擇 -->
+                    <div class="quantity-section">
+                        <h3>購買數量</h3>
+
+                        <div class="quantity-control">
+                            <button
+                                type="button"
+                                :disabled="quantity <= 1 || processing"
+                                @click="decreaseQuantity"
+                            >
+                                −
+                            </button>
+
+                            <span class="quantity-value">
+                                {{ quantity }}
+                            </span>
+
+                            <button
+                                type="button"
+                                :disabled="
+                                    currentStock <= 0 ||
+                                    quantity >= currentStock ||
+                                    processing
+                                "
+                                @click="increaseQuantity"
+                            >
+                                +
+                            </button>
+                        </div>
+
+                        <p class="quantity-hint">
+                            最多可購買 {{ currentStock }} 件
+                        </p>
+                    </div>
+
+                    <!-- 購物金額 -->
+                    <div class="purchase-total">
+                        <span>商品小計</span>
+                        <strong>{{ formattedSubtotal }}</strong>
+                    </div>
+
+                    <!-- 購物車錯誤訊息 -->
+                    <p
+                        v-if="errorMessage"
+                        class="error-message"
+                        role="alert"
+                    >
+                        {{ errorMessage }}
                     </p>
 
+                    <p
+                        v-if="Object.keys(page.props.errors || {}).length && !errorMessage"
+                        class="error-message"
+                        role="alert"
+                    >
+                        請確認商品規格及購買數量後重試。
+                    </p>
+
+                    <!-- 加入購物車 -->
+                    <div class="purchase-actions">
+                        <button
+                            type="button"
+                            class="add-cart-button"
+                            :disabled="!canAddToCart"
+                            @click="addToCart"
+                        >
+                            {{
+                                processing
+                                    ? '加入中...'
+                                    : currentStock <= 0
+                                        ? '商品已售完'
+                                        : '🛒 加入購物車'
+                            }}
+                        </button>
+
+                        <Link :href="cartUrl" class="view-cart-button">
+                            查看購物車
+                        </Link>
+                    </div>
+
+                    <p class="notice">
+                        加入購物車後可調整數量及移除商品。
+                        結帳與付款功能將於下一階段開放。
+                    </p>
+
+                    <!-- 商品介紹 -->
                     <div class="description">
                         <h3>商品介紹</h3>
+
                         <p>
                             {{ product.description || '目前尚無商品描述。' }}
                         </p>
@@ -240,6 +454,12 @@ function variantLabel(variant: Variant): string {
     gap: 20px;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
 .brand {
     font-size: 22px;
     font-weight: 800;
@@ -251,6 +471,16 @@ function variantLabel(variant: Variant): string {
 .breadcrumb a {
     color: #244c8f;
     text-decoration: none;
+}
+
+.cart-link {
+    background: #244c8f;
+    padding: 11px 18px;
+    border-radius: 8px;
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 14px;
 }
 
 .breadcrumb {
@@ -348,6 +578,12 @@ h3 {
     cursor: not-allowed;
 }
 
+.sold-out-message {
+    color: #b91c1c;
+    margin-top: 15px;
+    font-size: 14px;
+}
+
 .sku {
     font-size: 13px;
     color: #6b7280;
@@ -362,14 +598,118 @@ h3 {
     font-weight: 700;
 }
 
-.out-of-stock {
+.purchase-status.unavailable {
+    background: #fef2f2;
     color: #b91c1c;
+}
+
+.quantity-section {
+    padding: 25px 0;
+}
+
+.quantity-control {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #d1d5db;
+    border-radius: 9px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.quantity-control button {
+    width: 45px;
+    height: 45px;
+    border: none;
+    background: #f3f4f6;
+    cursor: pointer;
+    font-size: 22px;
+}
+
+.quantity-control button:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+.quantity-value {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 65px;
+    height: 45px;
+    background: white;
+    font-weight: 700;
+}
+
+.quantity-hint {
+    color: #6b7280;
+    font-size: 13px;
+    margin-top: 12px;
+}
+
+.purchase-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    border-top: 1px solid #e5e7eb;
+    padding: 25px 0;
+}
+
+.purchase-total strong {
+    font-size: 25px;
+    color: #c2410c;
+}
+
+.purchase-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.add-cart-button,
+.view-cart-button {
+    min-height: 50px;
+    padding: 14px 18px;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.add-cart-button {
+    flex: 2;
+    background: #244c8f;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.add-cart-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.view-cart-button {
+    flex: 1;
+    background: white;
+    color: #244c8f;
+    border: 1px solid #244c8f;
+    text-decoration: none;
+}
+
+.error-message {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-radius: 8px;
+    padding: 12px 15px;
+    font-size: 14px;
+    margin-bottom: 14px;
 }
 
 .notice {
     color: #6b7280;
     font-size: 13px;
     line-height: 1.7;
+    margin-top: 16px;
 }
 
 .description {
@@ -414,6 +754,37 @@ footer {
 
     .price {
         font-size: 25px;
+    }
+}
+
+@media (max-width: 520px) {
+    .header-inner {
+        min-height: 65px;
+    }
+
+    .header-actions {
+        gap: 10px;
+    }
+
+    .brand {
+        font-size: 17px;
+    }
+
+    .back-link {
+        display: none;
+    }
+
+    .cart-link {
+        padding: 9px 12px;
+    }
+
+    .purchase-actions {
+        flex-direction: column;
+    }
+
+    .add-cart-button,
+    .view-cart-button {
+        width: 100%;
     }
 }
 </style>

@@ -8,6 +8,9 @@ use App\Http\Controllers\SiteController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductVariantController;
 use App\Http\Controllers\ShopController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\OrderController;
 
 Route::get('/', function () {
     return Inertia::render('Home');
@@ -81,6 +84,27 @@ Route::middleware(['auth'])->group(function () {
         'destroy'
     ])->name('products.variants.destroy');
 
+
+    // 商家訂單列表及明細
+    Route::get('/seller/orders', [OrderController::class, 'index'])
+        ->name('seller.orders.index');
+
+    Route::get('/seller/orders/{order}', [OrderController::class, 'show'])
+        ->name('seller.orders.show');
+
+    // 商家訂單狀態與出貨管理
+    Route::patch('/seller/orders/{order}/process', [OrderController::class, 'process'])
+        ->name('seller.orders.process');
+
+    Route::patch('/seller/orders/{order}/ship', [OrderController::class, 'ship'])
+        ->name('seller.orders.ship');
+
+    Route::patch('/seller/orders/{order}/complete', [OrderController::class, 'complete'])
+        ->name('seller.orders.complete');
+
+    Route::patch('/seller/orders/{order}/cancel', [OrderController::class, 'cancel'])
+        ->name('seller.orders.cancel');
+
 });
 
 
@@ -95,3 +119,26 @@ Route::get('/shop/{site}/products/{product}', [
     'show'
 ])->name('shop.products.show');
 
+// 買家購物車路由
+Route::get('/shop/{site}/cart', [CartController::class, 'index'])
+    ->name('shop.cart.index');
+
+Route::post('/shop/{site}/cart', [CartController::class, 'store'])
+    ->name('shop.cart.store');
+
+Route::put('/shop/{site}/cart/{key}', [CartController::class, 'update'])
+    ->name('shop.cart.update');
+
+Route::delete('/shop/{site}/cart/{key}', [CartController::class, 'destroy'])
+    ->name('shop.cart.destroy');
+
+
+// 買家結帳與訂單成立路由
+Route::get('/shop/{site}/checkout', [CheckoutController::class, 'index'])
+    ->name('shop.checkout.index');
+
+Route::post('/shop/{site}/checkout', [CheckoutController::class, 'store'])
+    ->name('shop.checkout.store');
+
+Route::get('/shop/{site}/orders/{order}/success', [CheckoutController::class, 'success'])
+    ->name('shop.checkout.success');
