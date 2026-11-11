@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\Gate;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Site;
@@ -12,12 +13,17 @@ use Illuminate\Validation\ValidationException;
 
 class ProductVariantController extends Controller
 {
-    // 驗證商品是否屬於登入客戶
+    // 驗證使用者角色與商品所有權
     private function checkOwnership(Product $product): void
     {
+        // 驗證使用者是否具有商店管理權限
+        Gate::authorize('viewAny', Site::class);
+
+        // 驗證商品是否屬於目前登入者的商店
         Site::where('owner_user_id', Auth::id())
             ->findOrFail($product->site_id);
     }
+
 
     // 驗證規格組合
     private function validateOptions(array $options): array

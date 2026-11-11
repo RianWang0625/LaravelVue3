@@ -62,7 +62,8 @@ class CartTest extends TestCase
         ]);
     }
 
-    // 建立測試網站
+
+    // 建立已發布的測試網站，允許購物車功能正常執行
     private function createSite(string $name, string $slug): int
     {
         $owner = \App\Models\User::factory()->create();
@@ -83,12 +84,14 @@ class CartTest extends TestCase
             $data['site_type'] = 'ecommerce';
         }
 
+        // 購物車測試必須使用已正式發布的商店
         if (Schema::hasColumn('sites', 'status')) {
-            $data['status'] = 'draft';
+            $data['status'] = 'published';
         }
 
         return DB::table('sites')->insertGetId($data);
     }
+
 
     // 確認規格商品可以加入購物車
     public function test_can_add_variant_to_cart(): void

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\Gate;
 use App\Models\Product;
 use App\Models\Site;
 use Illuminate\Http\Request;
@@ -14,6 +15,8 @@ class ProductController extends Controller
     // 顯示商品列表
     public function index()
     {
+        Gate::authorize('viewAny', Site::class);
+
         $sites = Site::where('owner_user_id', Auth::id())
             ->get(['id', 'name']);
 
@@ -31,6 +34,8 @@ class ProductController extends Controller
     // 新增商品
     public function store(Request $request)
     {
+        Gate::authorize('viewAny', Site::class);
+
         $validated = $request->validate([
             'site_id' => 'required|integer',
             'name' => 'required|string|max:255',
@@ -75,6 +80,8 @@ class ProductController extends Controller
     // 修改商品
     public function update(Request $request, Product $product)
     {
+        Gate::authorize('viewAny', Site::class);
+
         Site::where('owner_user_id', Auth::id())
             ->findOrFail($product->site_id);
 
@@ -122,6 +129,8 @@ class ProductController extends Controller
     // 刪除商品
     public function destroy(Product $product)
     {
+        Gate::authorize('viewAny', Site::class);
+
         Site::where('owner_user_id', Auth::id())
             ->findOrFail($product->site_id);
 

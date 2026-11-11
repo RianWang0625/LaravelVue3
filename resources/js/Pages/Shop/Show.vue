@@ -52,6 +52,7 @@ const selectedVariantId = ref<number | null>(
 
 const quantity = ref(1);
 const processing = ref(false);
+
 const errorMessage = ref('');
 
 // 商品規格判斷

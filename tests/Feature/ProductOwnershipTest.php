@@ -23,9 +23,14 @@ class ProductOwnershipTest extends TestCase
     {
         parent::setUp();
 
-        // 建立兩個不同的商家帳號
-        $this->owner = User::factory()->create();
-        $this->otherUser = User::factory()->create();
+        // 建立兩個不同的 Seller 帳號
+        $this->owner = User::factory()->create([
+            'role' => 'seller',
+        ]);
+
+        $this->otherUser = User::factory()->create([
+            'role' => 'seller',
+        ]);
 
         // 建立商家 A 的網站
         $siteData = [
@@ -140,4 +145,102 @@ class ProductOwnershipTest extends TestCase
             'id' => $this->variant->id,
         ]);
     }
+
+    // Buyer cannot manage products even if they own a site
+    public function test_buyer_cannot_manage_products(): void
+    {
+        // Simulate an existing seller downgraded to buyer
+        $this->owner->role = 'buyer';
+        $this->owner->save();
+
+        $this->actingAs($this->owner)
+            ->get(route('products.index'))
+            ->assertForbidden();
+
+        $this->actingAs($this->owner)
+            ->post(route('products.store'), [
+                'site_id' => $this->product->site_id,
+                'name' => 'Unauthorized Product',
+                'price' => 100,
+                'stock' => 10,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($this->owner)
+            ->put("/products/{$this->product->id}", [
+                'name' => 'Unauthorized Update',
+                'price' => 1,
+                'stock' => 999,
+                'is_active' => true,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($this->owner)
+            ->delete("/products/{$this->product->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('products', [
+            'id' => $this->product->id,
+            'name' => '測試商品 A',
+            'stock' => 20,
+        ]);
+
+        $this->assertDatabaseMissing('products', [
+            'name' => 'Unauthorized Product',
+        ]);
+    }
+
+    // 測試 Buyer 無法管理商品規格
+    public function test_buyer_cannot_manage_variants(): void
+    {
+        // 模擬原本的 Seller 被改成 Buyer
+        $this->owner->role = 'buyer';
+        $this->owner->save();
+
+        // 驗證 Buyer 無法新增商品規格
+        $this->actingAs($this->owner)
+            ->post("/products/{$this->product->id}/variants", [
+                'sku' => 'UNAUTHORIZED-SKU',
+                'options' => ['顏色' => '紅色'],
+                'price' => 100,
+                'stock' => 50,
+                'is_active' => true,
+            ])
+            ->assertForbidden();
+
+        // 驗證 Buyer 無法修改商品規格
+        $this->actingAs($this->owner)
+            ->put(
+                "/products/{$this->product->id}/variants/{$this->variant->id}",
+                [
+                    'sku' => 'HACKED-SKU',
+                    'options' => ['顏色' => '白色'],
+                    'price' => 1,
+                    'stock' => 999,
+                    'is_active' => true,
+                ]
+            )
+            ->assertForbidden();
+
+        // 驗證 Buyer 無法刪除商品規格
+        $this->actingAs($this->owner)
+            ->delete(
+                "/products/{$this->product->id}/variants/{$this->variant->id}"
+            )
+            ->assertForbidden();
+
+        // 確認原本的商品規格沒有被修改或刪除
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $this->variant->id,
+            'sku' => 'TEST-BLACK',
+            'stock' => 10,
+        ]);
+
+        // 確認沒有新增未授權的商品規格
+        $this->assertDatabaseMissing('product_variants', [
+            'sku' => 'UNAUTHORIZED-SKU',
+        ]);
+    }
+
+
 }

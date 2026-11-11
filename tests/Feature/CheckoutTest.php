@@ -76,7 +76,7 @@ class CheckoutTest extends TestCase
         }
 
         if (Schema::hasColumn('sites', 'status')) {
-            $data['status'] = 'draft';
+            $data['status'] = 'published';
         }
 
         return DB::table('sites')->insertGetId($data);
@@ -318,4 +318,167 @@ class CheckoutTest extends TestCase
             'stock' => 10,
         ]);
     }
+
+    // 測試買家竄改前端價格不會影響實際訂單金額
+    public function test_checkout_ignores_tampered_price(): void
+    {
+        // 建立正常的結帳資料
+        $data = $this->checkoutData();
+
+        // 模擬買家在請求中竄改商品價格與訂單金額
+        $data['price'] = 1;
+        $data['subtotal'] = 1;
+        $data['shipping_fee'] = 0;
+        $data['total'] = 1;
+
+        // 使用正常購物車購買兩件商品
+        $response = $this->withSession(
+            $this->checkoutSession(
+                $this->siteAId,
+                $this->cart(2)
+            )
+        )->post(
+            "/shop/{$this->siteAId}/checkout",
+            $data
+        );
+
+        // 確認訂單正常建立
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('orders', 1);
+
+        $order = Order::firstOrFail();
+
+        // 確認系統使用資料庫價格，而非前端竄改的價格
+        $this->assertEquals(2580, $order->subtotal);
+        $this->assertEquals(60, $order->shipping_fee);
+        $this->assertEquals(2640, $order->total);
+
+        // 確認訂單明細的單價也沒有被竄改
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $order->id,
+            'product_id' => $this->productA->id,
+            'product_variant_id' => $this->variantId,
+            'unit_price' => '1290.00',
+            'quantity' => 2,
+            'subtotal' => '2580.00',
+        ]);
+    }
+
+    // 測試結帳時不能使用其他商品的規格
+    public function test_checkout_rejects_variant_from_another_product(): void
+    {
+        // 建立另一個商品
+        $productB = Product::create([
+            'site_id' => $this->siteAId,
+            'name' => '測試鍵盤',
+            'description' => '錯誤規格測試',
+            'price' => 2000,
+            'stock' => 10,
+            'is_active' => true,
+        ]);
+
+        // 建立商品 B 專屬規格
+        $variantB = $productB->variants()->create([
+            'sku' => 'CHECKOUT-KEYBOARD-B',
+            'options' => ['顏色' => '白色'],
+            'price' => 2000,
+            'stock' => 10,
+            'is_active' => true,
+        ]);
+
+        // 購物車放入商品 A，但故意使用商品 B 的規格
+        $cart = [
+            "p{$this->productA->id}_v{$variantB->id}" => [
+                'product_id' => $this->productA->id,
+                'variant_id' => $variantB->id,
+                'quantity' => 1,
+            ],
+        ];
+
+        // 嘗試結帳
+        $response = $this->withSession(
+            $this->checkoutSession($this->siteAId, $cart)
+        )->post(
+            "/shop/{$this->siteAId}/checkout",
+            $this->checkoutData()
+        );
+
+        // 必須拒絕建立訂單
+        $response->assertSessionHasErrors('cart');
+
+        // 確認沒有新增任何訂單與明細
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('order_items', 0);
+
+        // 確認商品 A 與商品 B 的規格庫存都沒有改變
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $this->variantId,
+            'stock' => 10,
+        ]);
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variantB->id,
+            'stock' => 10,
+        ]);
+    }
+
+    // 測試多商品結帳失敗時，不會扣除任何商品庫存
+    public function test_checkout_failure_does_not_reduce_any_stock(): void
+    {
+        // 建立第二個商品
+        $productB = Product::create([
+            'site_id' => $this->siteAId,
+            'name' => '測試鍵盤',
+            'description' => '交易回滾測試',
+            'price' => 2000,
+            'stock' => 1,
+            'is_active' => true,
+        ]);
+
+        // 購物車包含兩件商品
+        $cart = [
+            "p{$this->productA->id}_v{$this->variantId}" => [
+                'product_id' => $this->productA->id,
+                'variant_id' => $this->variantId,
+                'quantity' => 2,
+            ],
+            "p{$productB->id}_v0" => [
+                'product_id' => $productB->id,
+                'variant_id' => null,
+                'quantity' => 2,
+            ],
+        ];
+
+        // 第二個商品只有一件庫存，結帳應失敗
+        $response = $this->withSession(
+            $this->checkoutSession($this->siteAId, $cart)
+        )->post(
+            "/shop/{$this->siteAId}/checkout",
+            $this->checkoutData()
+        );
+
+        // 確認結帳被拒絕
+        $response->assertSessionHasErrors('cart');
+
+        // 確認沒有建立訂單
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('order_items', 0);
+
+        // 第一個商品的規格庫存必須保持不變
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $this->variantId,
+            'stock' => 10,
+        ]);
+
+        // 第二個商品的庫存也必須保持不變
+        $this->assertDatabaseHas('products', [
+            'id' => $productB->id,
+            'stock' => 1,
+        ]);
+    }
+
+
+
 }

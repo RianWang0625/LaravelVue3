@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\Gate;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -15,9 +16,13 @@ use Inertia\Inertia;
 
 class OrderController extends Controller
 {
-    // 查詢目前商家有權限操作的訂單
+    // 驗證登入者角色與訂單所有權
     private function ownedOrder(int $orderId): Order
     {
+        // 驗證使用者是否具有商店管理權限
+        Gate::authorize('viewAny', Site::class);
+
+        // 確認訂單屬於目前登入者的商店
         return Order::query()
             ->whereKey($orderId)
             ->whereHas('site', function ($query) {
@@ -29,6 +34,9 @@ class OrderController extends Controller
     // 顯示商家所屬網站的訂單列表
     public function index(Request $request)
     {
+        // 驗證使用者是否具有商店管理權限
+        Gate::authorize('viewAny', Site::class);
+
         $sites = Site::query()
             ->where('owner_user_id', Auth::id())
             ->orderBy('id')
@@ -296,4 +304,6 @@ class OrderController extends Controller
 
         return back()->with('success', '訂單已取消，庫存已恢復。');
     }
+
+
 }
