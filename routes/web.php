@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Middleware\EnsureSitePublished;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
@@ -191,3 +192,22 @@ Route::middleware(EnsureSitePublished::class)->group(function () {
     ])->name('shop.checkout.success');
 
 });
+
+/*
+|--------------------------------------------------------------------------
+| 平台管理員後台
+|--------------------------------------------------------------------------
+| 只有登入且具有 Admin 角色的使用者可以進入
+| 具體角色授權由 DashboardController 負責
+*/
+
+Route::middleware('auth')
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+
+        Route::get('/', [DashboardController::class, 'index'])
+            ->name('dashboard');
+
+    });
+
