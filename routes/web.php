@@ -92,6 +92,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/seller/orders/{order}', [OrderController::class, 'show'])
         ->name('seller.orders.show');
 
+        // 本機測試付款路由
+    if (app()->environment(['local', 'testing'])) {
+        Route::patch('/seller/orders/{order}/simulate-payment', [
+            OrderController::class,
+            'simulatePayment'
+        ])->name('seller.orders.simulate-payment');
+    }
     // 商家訂單狀態與出貨管理
     Route::patch('/seller/orders/{order}/process', [OrderController::class, 'process'])
         ->name('seller.orders.process');

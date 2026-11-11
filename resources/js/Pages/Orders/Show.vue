@@ -31,6 +31,7 @@ interface Order {
     payment_status: string;
     order_status: string;
     customer_note: string | null;
+    shipping_company: string | null;
     tracking_number: string | null;
     shipped_at: string | null;
     created_at: string;
@@ -46,10 +47,27 @@ const page = usePage();
 const shippingCompany = ref('');
 const trackingNumber = ref('');
 const processing = ref(false);
-
 const orderUrl = computed(
     () => `/seller/orders/${props.order.id}`
 );
+
+// 本機測試付款功能
+const isLocalEnvironment = import.meta.env.DEV;
+function simulatePayment() {
+    if (!isLocalEnvironment || processing.value) return;
+    if (!window.confirm('確定要模擬付款成功嗎？此操作僅供本機測試。')) {
+        return;
+    }
+    processing.value = true;
+    router.patch(`${orderUrl.value}/simulate-payment`, {}, {
+        preserveScroll: true,
+        onFinish: () => {
+            processing.value = false;
+        },
+    });
+}
+
+
 
 const orderErrors = computed(
     () => page.props.errors as Record<string, string>
@@ -195,6 +213,7 @@ function paymentText(status: string): string {
                         <p>電話：{{ order.recipient_phone }}</p>
                         <p>地址：{{ order.shipping_address || '未填寫' }}</p>
                         <p>配送方式：{{ order.shipping_method }}</p>
+                        <p>物流公司：{{ order.shipping_company || '尚未出貨' }}</p>
                         <p>物流單號：{{ order.tracking_number || '尚未出貨' }}</p>
                         <p v-if="order.customer_note">
                             客戶備註：{{ order.customer_note }}
@@ -243,6 +262,28 @@ function paymentText(status: string): string {
                     <!-- 商家訂單操作 -->
                     <section class="panel order-actions">
                         <h2>訂單管理</h2>
+                        <!-- 本機模擬付款 -->
+                        <div
+                            v-if="
+                                isLocalEnvironment &&
+                                order.payment_status === 'pending' &&
+                                ['pending', 'processing'].includes(order.order_status)
+                            "
+                            class="test-payment"
+                        >
+                            <p class="action-hint">
+                                開發測試功能：不會實際扣款。
+                            </p>
+
+                            <button
+                                type="button"
+                                class="action-button test"
+                                :disabled="processing"
+                                @click="simulatePayment"
+                            >
+                                模擬付款成功
+                            </button>
+                        </div>
 
                         <p
                             v-for="(message, field) in orderErrors"

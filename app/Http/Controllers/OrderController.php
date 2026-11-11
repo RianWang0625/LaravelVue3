@@ -111,6 +111,50 @@ class OrderController extends Controller
         return back()->with('success', '訂單已改為處理中。');
     }
 
+
+    // 本機模擬付款成功
+    public function simulatePayment(Order $order)
+    {
+        // 正式環境禁止使用
+        abort_unless(
+            app()->environment(['local', 'testing']),
+            404
+        );
+
+        // 確認訂單屬於目前登入的商家
+        $this->ownedOrder($order->id);
+
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::whereKey($order->id)
+                ->whereHas('site', function ($query) {
+                    $query->where('owner_user_id', Auth::id());
+                })
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // 只允許尚未付款且尚未出貨的訂單
+            if (
+                !in_array(
+                    $lockedOrder->order_status,
+                    ['pending', 'processing'],
+                    true
+                ) ||
+                $lockedOrder->payment_status !== 'pending'
+            ) {
+                throw ValidationException::withMessages([
+                    'payment_status' => '只有尚未付款且尚未出貨的訂單可以模擬付款。',
+                ]);
+            }
+
+            $lockedOrder->update([
+                'payment_status' => 'paid',
+            ]);
+        }, 3);
+
+        return back()->with('success', '測試付款成功，訂單已標記為已付款。');
+    }
+
+
     // 登記訂單出貨資訊
     public function ship(Request $request, Order $order)
     {
