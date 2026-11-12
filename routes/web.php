@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Middleware\EnsureSitePublished;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -201,13 +202,20 @@ Route::middleware(EnsureSitePublished::class)->group(function () {
 | 具體角色授權由 DashboardController 負責
 */
 
+
 Route::middleware('auth')
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
 
+        // Admin Dashboard
         Route::get('/', [DashboardController::class, 'index'])
             ->name('dashboard');
 
+        // Admin 查看平台所有商店
+        Route::get('/sites', [AdminSiteController::class, 'index'])
+            ->name('sites.index');
+
     });
+
 
