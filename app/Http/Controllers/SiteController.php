@@ -114,7 +114,18 @@ class SiteController extends Controller
             'slug' => $validated['slug'],
             'site_type' => $validated['site_type'],
             'status' => 'draft',
-            'settings' => [],
+
+            // 設定網站預設模板與外觀
+            'settings' => [
+                'template_key' => 'default',
+                'design_mode' => 'standard',
+                'theme' => [
+                    'primary_color' => '#2563EB',
+                    'background_color' => '#FFFFFF',
+                    'logo' => null,
+                    'banner' => null,
+                ],
+            ],
         ]);
 
         return redirect()

@@ -54,13 +54,31 @@ class ShopController extends Controller
             ->latest()
             ->get();
 
+
         return Inertia::render('Shop/Index', [
             'site' => [
                 'id' => $site->id,
                 'name' => $site->name,
+
+                // 取得目前商店的模板設定
+                'template_key' => $site->settings['template_key'] ?? 'default',
+
+                // 取得目前商店的設計模式
+                'design_mode' => $site->settings['design_mode'] ?? 'standard',
+
+                // 取得目前商店的主題顏色與圖片
+                'theme' => $site->settings['theme'] ?? [
+                    'primary_color' => '#2563EB',
+                    'background_color' => '#FFFFFF',
+                    'logo' => null,
+                    'banner' => null,
+                ],
             ],
+
+            // 保留原本商品列表
             'products' => $products,
         ]);
+
     }
 
     // 顯示指定網站的商品詳細資料
@@ -79,12 +97,26 @@ class ShopController extends Controller
             }
         ]);
 
+
         return Inertia::render('Shop/Show', [
             'site' => [
                 'id' => $site->id,
                 'name' => $site->name,
+
+                // 商品詳細頁沿用相同的網站模板設定
+                'template_key' => $site->settings['template_key'] ?? 'default',
+                'design_mode' => $site->settings['design_mode'] ?? 'standard',
+                'theme' => $site->settings['theme'] ?? [
+                    'primary_color' => '#2563EB',
+                    'background_color' => '#FFFFFF',
+                    'logo' => null,
+                    'banner' => null,
+                ],
             ],
+
+            // 保留原本商品資料
             'product' => $product,
         ]);
+
     }
 }
